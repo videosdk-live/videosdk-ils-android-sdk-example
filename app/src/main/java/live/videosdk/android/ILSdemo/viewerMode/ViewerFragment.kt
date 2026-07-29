@@ -138,9 +138,11 @@ class ViewerFragment : Fragment() {
 
         if (stream != null) {
 
-            coHostListener = PubSubMessageListener { pubSubMessage: PubSubMessage ->
-                if ((pubSubMessage.message == stream!!.localParticipant.id)) {
-                    showCoHostRequestDialog(pubSubMessage.senderName)
+            coHostListener = object : PubSubMessageListener {
+                override fun onMessageReceived(pubSubMessage: PubSubMessage) {
+                    if ((pubSubMessage.message == stream!!.localParticipant.id)) {
+                        showCoHostRequestDialog(pubSubMessage.senderName)
+                    }
                 }
             }
             stream!!.pubSub.subscribe("coHost", coHostListener)

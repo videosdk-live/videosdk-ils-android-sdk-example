@@ -14,6 +14,7 @@ import android.widget.*
 import androidx.recyclerview.widget.RecyclerView
 import live.videosdk.rtc.android.Participant
 import live.videosdk.rtc.android.Stream
+import live.videosdk.rtc.android.lib.PubSubMessage
 import java.util.ArrayList
 
 class ParticipantListAdapter(
@@ -153,24 +154,26 @@ class ParticipantListAdapter(
                 participant
             )
         }
-        coHostAnswerListener = PubSubMessageListener { pubSubMessage ->
-            if (pubSubMessage.senderId == participant.id) {
-                if (pubSubMessage.message == "decline") {
-                    Toast.makeText(
-                        context,
-                        pubSubMessage.senderName + " has declined your request.",
-                        Toast.LENGTH_LONG
-                    ).show()
+        coHostAnswerListener = object : PubSubMessageListener {
+            override fun onMessageReceived(pubSubMessage: PubSubMessage) {
+                if (pubSubMessage.senderId == participant.id) {
+                    if (pubSubMessage.message == "decline") {
+                        Toast.makeText(
+                            context,
+                            pubSubMessage.senderName + " has declined your request.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    if (pubSubMessage.message == "accept") {
+                        Toast.makeText(
+                            context,
+                            pubSubMessage.senderName + " has accept your request.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    holder.requestedIndicator.visibility = View.GONE
+                    holder.btnParticipantMoreOptions.isEnabled = true
                 }
-                if (pubSubMessage.message == "accept") {
-                    Toast.makeText(
-                        context,
-                        pubSubMessage.senderName + " has accept your request.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-                holder.requestedIndicator.visibility = View.GONE
-                holder.btnParticipantMoreOptions.isEnabled = true
             }
         }
 

@@ -6,8 +6,6 @@
 
 **VideoSDK's Interactive Live Streaming (ILS)** enables real-time webinars, events, and social engagements with up to **100 hosts/co-hosts** and **2,000 viewers**. Perfect for large-scale interactions, it supports dynamic tools like Q&A and live chat for seamless engagement.
 
-### 🥳 Get **10,000 minutes free** every month! **[Try it now!](https://app.videosdk.live/signup)**
-
 ## 📚 **Table of Contents**
 
 - [🔥 **Features**](#-features)

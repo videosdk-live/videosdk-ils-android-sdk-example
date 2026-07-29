@@ -34,6 +34,7 @@ import live.videosdk.android.ILSdemo.viewerMode.ViewerFragment
 import live.videosdk.rtc.android.*
 import live.videosdk.rtc.android.VideoView
 import live.videosdk.rtc.android.lib.AppRTCAudioManager.AudioDevice
+import live.videosdk.rtc.android.lib.PubSubMessage
 import live.videosdk.rtc.android.listeners.MeetingEventListener
 import live.videosdk.rtc.android.listeners.ParticipantEventListener
 import live.videosdk.rtc.android.listeners.PubSubMessageListener
@@ -149,13 +150,15 @@ class StageFragment() : Fragment() {
             }
 
             removeCoHostListener =
-                PubSubMessageListener { pubSubMessage ->
-                    if ((pubSubMessage.message == meeting!!.localParticipant.id)) {
-                        meeting!!.changeMode("RECV_ONLY")
-                        requireActivity().supportFragmentManager
-                            .beginTransaction()
-                            .replace(R.id.mainLayout, ViewerFragment(), "viewerFragment")
-                            .commit()
+                object : PubSubMessageListener {
+                    override fun onMessageReceived(pubSubMessage: PubSubMessage) {
+                        if ((pubSubMessage.message == meeting!!.localParticipant.id)) {
+                            meeting!!.changeMode("RECV_ONLY")
+                            requireActivity().supportFragmentManager
+                                .beginTransaction()
+                                .replace(R.id.mainLayout, ViewerFragment(), "viewerFragment")
+                                .commit()
+                        }
                     }
                 }
             meeting!!.pubSub.subscribe("removeCoHost", removeCoHostListener)
@@ -490,7 +493,7 @@ class StageFragment() : Fragment() {
             toggleScreenShareIcon()
         }
 
-        override fun onSpeakerChanged(participantId: String) {
+        override fun onSpeakerChanged(participantId: String?) {
             if (!isNullOrEmpty(participantId)) {
                 if (speakerView != null) {
                     if (speakerView!!.containsKey(participantId)) {
@@ -814,7 +817,7 @@ class StageFragment() : Fragment() {
             ).show()
             return
         }
-        meeting!!.enableScreenShare(data)
+        meeting!!.enableScreenShare(data, false)
     }
 
     private fun setActionListeners() {
@@ -836,7 +839,8 @@ class StageFragment() : Fragment() {
                     facingMode,
                     CustomStreamTrack.VideoMode.DETAIL,
                     true,
-                    mContext,null,null,
+                    mContext,
+                    null
                 )
                 meeting!!.enableWebcam(videoCustomTrack)
             }
