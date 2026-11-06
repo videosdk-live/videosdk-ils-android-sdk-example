@@ -1,5 +1,14 @@
 package live.videosdk.android.ILSdemo.viewerMode
 
+import live.videosdk.android.ILSdemo.common.utils.sdkScope
+
+import kotlinx.coroutines.launch
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+
+import live.videosdk.rtc.android.MediaType
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -17,12 +26,12 @@ import live.videosdk.android.ILSdemo.speakerMode.manageTabs.SpeakerFragment
 import live.videosdk.rtc.android.*
 import live.videosdk.rtc.android.VideoView
 import live.videosdk.rtc.android.lib.PubSubMessage
-import live.videosdk.rtc.android.listeners.MeetingEventListener
+import live.videosdk.rtc.android.listeners.RoomEventListener
 import live.videosdk.rtc.android.listeners.ParticipantEventListener
 import live.videosdk.rtc.android.listeners.PubSubMessageListener
 import live.videosdk.rtc.android.model.PubSubPublishOptions
-import org.webrtc.RendererCommon
-import org.webrtc.VideoTrack
+import videosdk.org.webrtc.RendererCommon
+import videosdk.org.webrtc.VideoTrack
 import java.util.*
 
 class ViewerFragment : Fragment() {
@@ -30,7 +39,7 @@ class ViewerFragment : Fragment() {
     private var speakerView: MutableMap<String, View> = HashMap()
     private var speakerList: MutableList<Participant?> = ArrayList()
     private var btnLeave: ImageView? = null
-    private var stream: Meeting? = null
+    private var stream: Room? = null
     private var mActivity: Activity? = null
     private var mContext: Context? = null
     private var waitingLayout: LinearLayout? = null
@@ -61,12 +70,12 @@ class ViewerFragment : Fragment() {
             releaseSurfaceViewRenderer()
         }
         stream?.apply {
-            localParticipant.removeAllListeners()
-            pubSub.unsubscribe("coHost", coHostListener)
+            localParticipant.removeAllEventListeners()
+            sdkScope.launch { pubSub.unsubscribe("coHost", coHostListener!!) }
             participants.values.forEach { participant ->
-                participant.removeAllListeners()
+                participant.removeAllEventListeners()
             }
-            removeAllListeners()
+            removeAllEventListeners()
             stream = null
         }
         mContext = null
@@ -110,13 +119,13 @@ class ViewerFragment : Fragment() {
             speakerView.clear()
 
             participants.values
-                .filter { it.mode == "SEND_AND_RECV" }
+                .filter { it.mode == live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV }
                 .forEach { participant ->
                     showParticipants(participant)
                 }
 
             val sendRecvParticipants = participants.values
-                .filter { it.mode == "SEND_AND_RECV" }
+                .filter { it.mode == live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV }
 
             if (sendRecvParticipants.isEmpty()) {
                 waitingLayout?.visibility = View.VISIBLE
@@ -141,17 +150,17 @@ class ViewerFragment : Fragment() {
             coHostListener = object : PubSubMessageListener {
                 override fun onMessageReceived(pubSubMessage: PubSubMessage) {
                     if ((pubSubMessage.message == stream!!.localParticipant.id)) {
-                        showCoHostRequestDialog(pubSubMessage.senderName)
+                        showCoHostRequestDialog(pubSubMessage.senderName ?: "")
                     }
                 }
             }
-            stream!!.pubSub.subscribe("coHost", coHostListener)
+            sdkScope.launch { stream!!.pubSub.subscribe("coHost", coHostListener!!) }
         }
         return view
     }
 
-    private val meetingEventListener = object : MeetingEventListener() {
-        override fun onMeetingLeft() {
+    private val meetingEventListener = object : RoomEventListener() {
+        override fun onRoomLeft(reason: live.videosdk.rtc.android.lib.LeaveReason) {
             if (isAdded) {
                 val intent = Intent(mContext, CreateOrJoinActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -164,7 +173,7 @@ class ViewerFragment : Fragment() {
         }
 
         override fun onParticipantJoined(participant: Participant) {
-            if (participant.mode == "SEND_AND_RECV") {
+            if (participant.mode == live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV) {
 
                 if (speakerList.isEmpty()) {
                     waitingLayout?.visibility = View.GONE
@@ -175,7 +184,7 @@ class ViewerFragment : Fragment() {
             }
         }
 
-        override fun onParticipantLeft(participant: Participant) {
+        override fun onParticipantLeft(participant: Participant, reason: live.videosdk.rtc.android.lib.LeaveReason) {
             if (speakerList.contains(participant)) {
                 speakerList.remove(participant)
                 speakerView.remove(participant.id)?.let { view ->
@@ -194,7 +203,7 @@ class ViewerFragment : Fragment() {
 
             if (!participantId.isNullOrEmpty()) {
                 val presenter = stream?.participants?.get(participantId)
-                if (presenter?.mode == "SEND_AND_RECV") {
+                if (presenter?.mode == live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV) {
                     updatePresenter(presenter)
                 }
                 screenshareEnabled = true
@@ -220,7 +229,7 @@ class ViewerFragment : Fragment() {
 
         // Find share stream in participant
         val shareStream = participant.streams.values.find { stream ->
-            stream.kind == "share"
+            stream.kind == MediaType.SHARE
         } ?: return
 
         // Update UI for screen share
@@ -248,7 +257,7 @@ class ViewerFragment : Fragment() {
     }
 
     private fun showParticipants(participant: Participant) {
-        if (participant.mode == "SEND_AND_RECV" && speakerList.size < 4 && !speakerList.contains(participant)) {
+        if (participant.mode == live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV && speakerList.size < 4 && !speakerList.contains(participant)) {
             speakerList.add(participant)
         }
     }
@@ -257,7 +266,7 @@ class ViewerFragment : Fragment() {
         speakerGridLayout?.removeAllViews()
 
         speakerList.filterNotNull()
-            .filter { it.mode == "SEND_AND_RECV" }
+            .filter { it.mode == live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV }
             .forEach { participant ->
                 // Check if we need to create a new view or reuse existing one
                 val participantView = if (speakerView.containsKey(participant.id)) {
@@ -298,42 +307,42 @@ class ViewerFragment : Fragment() {
 
         participant.streams.values.forEach { stream ->
             when {
-                stream.kind.equals("video", ignoreCase = true) -> {
+                stream.kind == MediaType.VIDEO -> {
                     participantVideoView.visibility = View.VISIBLE
                     (stream.track as? VideoTrack)?.let { videoTrack ->
                         participantVideoView.addTrack(videoTrack)
                     }
                 }
-                stream.kind.equals("audio", ignoreCase = true) -> {
+                stream.kind == MediaType.AUDIO -> {
                     ivMicStatus.setImageResource(R.drawable.ic_audio_on)
                 }
             }
         }
 
         participant.addEventListener(object : ParticipantEventListener() {
-            override fun onStreamEnabled(stream: Stream) {
+            override fun onStreamEnabled(stream: RTCStream) {
                 when {
-                    stream.kind.equals("video", ignoreCase = true) -> {
+                    stream.kind == MediaType.VIDEO -> {
                         participantVideoView.visibility = View.VISIBLE
                         (stream.track as? VideoTrack)?.let { videoTrack ->
                             participantVideoView.addTrack(videoTrack)
                         }
                     }
-                    stream.kind.equals("audio", ignoreCase = true) -> {
+                    stream.kind == MediaType.AUDIO -> {
                         ivMicStatus.setImageResource(R.drawable.ic_audio_on)
                     }
                 }
             }
 
-            override fun onStreamDisabled(stream: Stream) {
+            override fun onStreamDisabled(stream: RTCStream) {
                 when {
-                    stream.kind.equals("video", ignoreCase = true) -> {
+                    stream.kind == MediaType.VIDEO -> {
                         (stream.track as? VideoTrack)?.let { _ ->
                             participantVideoView.removeTrack()
                         }
                         participantVideoView.visibility = View.GONE
                     }
-                    stream.kind.equals("audio", ignoreCase = true) -> {
+                    stream.kind == MediaType.AUDIO -> {
                         ivMicStatus.setImageResource(R.drawable.ic_audio_off)
                     }
                 }
@@ -394,11 +403,10 @@ class ViewerFragment : Fragment() {
         message2.text = "join as speaker"
         val acceptBtn = dialogView.findViewById<Button>(R.id.acceptBtn)
         acceptBtn.setOnClickListener {
-            stream!!.changeMode("SEND_AND_RECV")
+            sdkScope.launch { stream!!.changeMode(live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV) }
             alertDialog.dismiss()
             val pubSubPublishOptions: PubSubPublishOptions = PubSubPublishOptions()
-            pubSubPublishOptions.isPersist = false
-            stream!!.pubSub.publish("coHostRequestAnswer", "accept", pubSubPublishOptions)
+            sdkScope.launch { stream!!.pubSub.publish("coHostRequestAnswer", "accept", pubSubPublishOptions) }
             requireActivity().supportFragmentManager
                 .beginTransaction()
                 .replace(R.id.mainLayout, SpeakerFragment(), "MainFragment")
@@ -408,8 +416,7 @@ class ViewerFragment : Fragment() {
         declineBtn.setOnClickListener {
             alertDialog.dismiss()
             val pubSubPublishOptions: PubSubPublishOptions = PubSubPublishOptions()
-            pubSubPublishOptions.isPersist = false
-            stream!!.pubSub.publish("coHostRequestAnswer", "decline", pubSubPublishOptions)
+            sdkScope.launch { stream!!.pubSub.publish("coHostRequestAnswer", "decline", pubSubPublishOptions) }
         }
         alertDialog.show()
     }

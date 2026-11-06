@@ -83,14 +83,14 @@ class SpeakerFragment : Fragment() {
         message.text = "Stream Code"
         message.textSize = 15f
         message.setTextColor(resources.getColor(R.color.md_grey_10A))
-        message1.text = "               " + (activity as MainActivity?)!!.getStream()!!.meetingId
+        message1.text = "               " + (activity as MainActivity?)!!.getStream()!!.id
         message1.setOnTouchListener { v: View?, event: MotionEvent ->
             if (event.action == MotionEvent.ACTION_DOWN) {
                 if (event.rawX >= message1.right - message1.compoundDrawables[2]
                         .bounds.width()
                 ) {
                     copyTextToClipboard(
-                        (activity as MainActivity?)!!.getStream()!!.meetingId
+                        (activity as MainActivity?)!!.getStream()!!.id
                     )
                     return@setOnTouchListener true
                 }

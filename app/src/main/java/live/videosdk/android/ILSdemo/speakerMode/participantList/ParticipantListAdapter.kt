@@ -1,9 +1,18 @@
 package live.videosdk.android.ILSdemo.speakerMode.participantList
 
+import live.videosdk.android.ILSdemo.common.utils.sdkScope
+
+import kotlinx.coroutines.launch
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+
+import live.videosdk.rtc.android.MediaType
+
 import android.content.Context
-import live.videosdk.rtc.android.Meeting
+import live.videosdk.rtc.android.Room
 import live.videosdk.rtc.android.listeners.PubSubMessageListener
-import live.videosdk.rtc.android.listeners.MeetingEventListener
+import live.videosdk.rtc.android.listeners.RoomEventListener
 import org.json.JSONObject
 import live.videosdk.android.ILSdemo.R
 import live.videosdk.rtc.android.listeners.ParticipantEventListener
@@ -13,13 +22,13 @@ import android.view.*
 import android.widget.*
 import androidx.recyclerview.widget.RecyclerView
 import live.videosdk.rtc.android.Participant
-import live.videosdk.rtc.android.Stream
+import live.videosdk.rtc.android.RTCStream
 import live.videosdk.rtc.android.lib.PubSubMessage
 import java.util.ArrayList
 
 class ParticipantListAdapter(
     items: ArrayList<Participant?>?,
-    private val stream: Meeting,
+    private val stream: Room,
     private val context: Context
 ) : RecyclerView.Adapter<ParticipantListAdapter.ViewHolder>() {
     private var participants = ArrayList<Participant?>()
@@ -28,7 +37,7 @@ class ParticipantListAdapter(
     init {
         participants.add(stream.localParticipant)
         participants.addAll(items!!)
-        stream.addEventListener(object : MeetingEventListener() {
+        stream.addEventListener(object : RoomEventListener() {
             override fun onParticipantJoined(participant: Participant) {
                 super.onParticipantJoined(participant)
                 participants = ArrayList()
@@ -37,15 +46,15 @@ class ParticipantListAdapter(
                 notifyDataSetChanged()
             }
 
-            override fun onParticipantLeft(participant: Participant) {
-                super.onParticipantLeft(participant)
+            override fun onParticipantLeft(participant: Participant, reason: live.videosdk.rtc.android.lib.LeaveReason) {
+                super.onParticipantLeft(participant, reason)
                 participants = ArrayList()
                 participants.add(stream.localParticipant)
                 participants.addAll(allParticipants)
                 notifyDataSetChanged()
             }
 
-            override fun onParticipantModeChanged(data: JSONObject) {
+            override fun onParticipantModeChanged(participantId: String, mode: live.videosdk.rtc.android.lib.Mode) {
                 participants = ArrayList()
                 participants.add(stream.localParticipant)
                 participants.addAll(allParticipants)
@@ -60,14 +69,14 @@ class ParticipantListAdapter(
             var participants: Iterator<Participant> = stream.participants.values.iterator()
             for (i in 0 until stream.participants.size) {
                 val participant = participants.next()
-                if (participant.mode == "SEND_AND_RECV") {
+                if (participant.mode == live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV) {
                     participantList.add(participant)
                 }
             }
             participants = stream.participants.values.iterator()
             for (i in 0 until stream.participants.size) {
                 val participant = participants.next()
-                if (participant.mode == "RECV_ONLY") {
+                if (participant.mode == live.videosdk.rtc.android.lib.Mode.RECV_ONLY) {
                     participantList.add(participant)
                 }
             }
@@ -94,7 +103,7 @@ class ParticipantListAdapter(
         }
         holder.participantNameFirstLetter.text =
             participants[position]!!.displayName.subSequence(0, 1)
-        if (participant!!.mode == "RECV_ONLY") {
+        if (participant!!.mode == live.videosdk.rtc.android.lib.Mode.RECV_ONLY) {
             holder.micStatus.visibility = View.GONE
             holder.camStatus.visibility = View.GONE
             holder.hostIndicator.visibility = View.GONE
@@ -104,39 +113,39 @@ class ParticipantListAdapter(
             holder.hostIndicator.visibility = View.VISIBLE
         }
         for ((_, stream) in participant.streams) {
-            if (stream.kind.equals("video", ignoreCase = true)) {
+            if (stream.kind == MediaType.VIDEO) {
                 holder.camStatus.setImageResource(R.drawable.ic_video_camera)
                 holder.camStatus.layoutParams.width = 60
                 holder.camStatus.requestLayout()
                 break
             }
-            if (stream.kind.equals("audio", ignoreCase = true)) {
+            if (stream.kind == MediaType.AUDIO) {
                 holder.micStatus.setImageResource(R.drawable.ic_mic_on)
                 holder.micStatus.layoutParams.width = 60
                 holder.micStatus.requestLayout()
             }
         }
         participant.addEventListener(object : ParticipantEventListener() {
-            override fun onStreamEnabled(stream: Stream) {
-                if (stream.kind.equals("video", ignoreCase = true)) {
+            override fun onStreamEnabled(stream: RTCStream) {
+                if (stream.kind == MediaType.VIDEO) {
                     holder.camStatus.setImageResource(R.drawable.ic_video_camera)
                     holder.camStatus.layoutParams.width = 60
                     holder.camStatus.requestLayout()
                 }
-                if (stream.kind.equals("audio", ignoreCase = true)) {
+                if (stream.kind == MediaType.AUDIO) {
                     holder.micStatus.setImageResource(R.drawable.ic_mic_on)
                     holder.micStatus.layoutParams.width = 60
                     holder.micStatus.requestLayout()
                 }
             }
 
-            override fun onStreamDisabled(stream: Stream) {
-                if (stream.kind.equals("video", ignoreCase = true)) {
+            override fun onStreamDisabled(stream: RTCStream) {
+                if (stream.kind == MediaType.VIDEO) {
                     holder.camStatus.setImageResource(R.drawable.ic_webcam_off_style)
                     holder.camStatus.layoutParams.width = 110
                     holder.camStatus.requestLayout()
                 }
-                if (stream.kind.equals("audio", ignoreCase = true)) {
+                if (stream.kind == MediaType.AUDIO) {
                     holder.micStatus.setImageResource(R.drawable.ic_mic_off_style)
                     holder.micStatus.layoutParams.width = 110
                     holder.micStatus.requestLayout()
@@ -178,12 +187,12 @@ class ParticipantListAdapter(
         }
 
         // notify user when viewer answer the request
-        stream.pubSub.subscribe("coHostRequestAnswer", coHostAnswerListener)
+        sdkScope.launch { stream.pubSub.subscribe("coHostRequestAnswer", coHostAnswerListener!!) }
     }
 
     private fun showPopup(holder: ViewHolder, participant: Participant?) {
         val popup = PopupMenu(context, holder.btnParticipantMoreOptions)
-        if (participant!!.mode == "RECV_ONLY") {
+        if (participant!!.mode == live.videosdk.rtc.android.lib.Mode.RECV_ONLY) {
             popup.menu.add("Add as a co-host")
         } else {
             holder.micStatus.visibility = View.VISIBLE
@@ -194,19 +203,17 @@ class ParticipantListAdapter(
         popup.menu.add("Remove Participant")
         popup.setOnMenuItemClickListener { item: MenuItem ->
             if (item.toString() == "Remove Participant") {
-                participant.remove()
+                sdkScope.launch { participant.remove() }
                 return@setOnMenuItemClickListener true
             } else if (item.toString() == "Add as a co-host") {
                 val pubSubPublishOptions = PubSubPublishOptions()
-                pubSubPublishOptions.isPersist = false
-                stream.pubSub.publish("coHost", participant.id, pubSubPublishOptions)
+                sdkScope.launch { stream.pubSub.publish("coHost", participant.id, pubSubPublishOptions) }
                 holder.requestedIndicator.visibility = View.VISIBLE
                 holder.btnParticipantMoreOptions.isEnabled = false
                 return@setOnMenuItemClickListener true
             } else if (item.toString() == "Remove from co-host") {
                 val pubSubPublishOptions = PubSubPublishOptions()
-                pubSubPublishOptions.isPersist = false
-                stream.pubSub.publish("removeCoHost", participant.id, pubSubPublishOptions)
+                sdkScope.launch { stream.pubSub.publish("removeCoHost", participant.id, pubSubPublishOptions) }
                 return@setOnMenuItemClickListener true
             }
             false

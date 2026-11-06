@@ -1,5 +1,14 @@
 package live.videosdk.android.ILSdemo.common.stream.activity
 
+import live.videosdk.android.ILSdemo.common.utils.sdkScope
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+
+import kotlinx.coroutines.launch
+
+
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -16,15 +25,15 @@ import live.videosdk.android.ILSdemo.R
 import live.videosdk.android.ILSdemo.speakerMode.manageTabs.SpeakerFragment
 import live.videosdk.android.ILSdemo.viewerMode.ViewerFragment
 import live.videosdk.rtc.android.CustomStreamTrack
-import live.videosdk.rtc.android.Meeting
+import live.videosdk.rtc.android.Room
 import live.videosdk.rtc.android.VideoSDK
-import live.videosdk.rtc.android.listeners.MeetingEventListener
+import live.videosdk.rtc.android.listeners.RoomEventListener
 
 class MainActivity : AppCompatActivity() {
 
-    private var meeting: Meeting? = null
-    private var facingMode: String? = null
-
+    private var meeting: Room? = null
+    private var facingMode: String? = "front"
+    
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,32 +48,20 @@ class MainActivity : AppCompatActivity() {
             localParticipantName = "John Doe"
         }
 
-        // pass the token generated from api server
-        VideoSDK.config(token)
-        val customTracks: MutableMap<String, CustomStreamTrack> = HashMap()
-        facingMode = "front"
-        val videoCustomTrack = VideoSDK.createCameraVideoTrack(
-            "h720p_w960p",
-            facingMode,
-            CustomStreamTrack.VideoMode.TEXT,
-            true,
-            this,
-            null
+        meeting = VideoSDK.createRoom(
+            streamId!!, token!!, localParticipantName,
+            micEnabled, webcamEnabled,
+            mode = if (mode == "VIEWER" || mode == "RECV_ONLY") live.videosdk.rtc.android.lib.Mode.RECV_ONLY else live.videosdk.rtc.android.lib.Mode.SEND_AND_RECV
         )
-        customTracks["video"] = videoCustomTrack
-        val audioCustomTrack = VideoSDK.createAudioTrack("high_quality", this)
-        customTracks["mic"] = audioCustomTrack
+        meeting!!.addEventListener(object : RoomEventListener() {
+            override fun onError(error: live.videosdk.rtc.android.lib.VideoSDKError) {
+                android.widget.Toast.makeText(this@MainActivity, "${error.code} ${error.message}", android.widget.Toast.LENGTH_LONG).show()
+            }
 
-        // create a new meeting instance //54dr-h8c5-hsif
-        meeting = VideoSDK.initMeeting(
-            this@MainActivity, streamId, localParticipantName,
-            micEnabled, webcamEnabled, null, mode, true, customTracks,null
-        )
-        meeting!!.addEventListener(object : MeetingEventListener() {
-            override fun onMeetingJoined() {
+            override fun onRoomJoined(switchRoomId: String?) {
                 if (meeting != null) {
                     if (mode == "SEND_AND_RECV") {
-                        meeting!!.localParticipant.pin("SHARE_AND_CAM")
+                        sdkScope.launch { meeting!!.localParticipant.pin(live.videosdk.rtc.android.PinType.SHARE_AND_CAM) }
                         supportFragmentManager
                             .beginTransaction()
                             .replace(R.id.mainLayout, SpeakerFragment(), "MainFragment")
@@ -109,11 +106,11 @@ class MainActivity : AppCompatActivity() {
 
     private val permissionHandler: PermissionHandler = object : PermissionHandler() {
         override fun onGranted() {
-            if (meeting != null) meeting!!.join()
+            if (meeting != null) sdkScope.launch { meeting!!.join() }
         }
     }
 
-    fun getStream(): Meeting? {
+    fun getStream(): Room? {
         return meeting
     }
 
@@ -140,7 +137,7 @@ class MainActivity : AppCompatActivity() {
         val positiveButton = dialogView.findViewById<Button>(R.id.positiveBtn)
         positiveButton.text = "Yes"
         positiveButton.setOnClickListener {
-            meeting!!.leave()
+            sdkScope.launch { meeting!!.leave() }
             alertDialog.dismiss()
             val intents = Intent(this@MainActivity, CreateOrJoinActivity::class.java)
             intents.addFlags(
